@@ -743,6 +743,7 @@ int main(int argc, char *argv[])
                                                    [](QQmlEngine* qmlEngine, QJSEngine*) -> QObject* {
                                                        return StreamingPreferences::get(qmlEngine);
                                                    });
+    qmlRegisterType(QUrl(QStringLiteral("qrc:/gui/LoginDialog.qml")), "Moonlight", 1, 0, "LoginDialog");
 
     // Create the identity manager on the main thread
     IdentityManager::get();

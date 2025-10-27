@@ -9,6 +9,7 @@ import AutoUpdateChecker 1.0
 import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
+import Moonlight 1.0
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -49,6 +50,11 @@ ApplicationWindow {
         } else {
             window.showFullScreen()
         }
+
+        // Check if user is logged in, if not show login dialog
+        // For demo purposes, we'll assume user is not logged in
+        // In a real implementation, this would check actual login state
+        loginDialog.open()
 
         // Display any modal dialogs for configuration warnings
         if (SystemProperties.isWow64) {
@@ -540,6 +546,15 @@ ApplicationWindow {
                     addPcDialog.accept()
                 }
             }
+        }
+    }
+
+    // Login dialog - 新增的登录对话框
+    LoginDialog {
+        id: loginDialog
+        onClosed: {
+            // 登录完成后可以执行一些操作
+            console.log("User logged in")
         }
     }
 }
