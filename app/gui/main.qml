@@ -9,6 +9,7 @@ import AutoUpdateChecker 1.0
 import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
+import PemHttpClient 1.0
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -18,11 +19,17 @@ ApplicationWindow {
     // a retranslate() because AppView breaks for some reason.
     property bool clearOnBack: false
 
+    // 设备注册相关属性
+    property bool deviceRegistered: false
+    property string currentDeviceId: ""
+    property string currentQrCodeUrl: ""
+    property bool showQrCode: false
+
     id: window
     width: 1280
     height: 600
 
-    // This function runs prior to creation of the initial StackView item
+    // 这个函数运行在创建初始StackView项之前
     function doEarlyInit() {
         // Override the background color to Material 2 colors for Qt 6.5+
         // in order to improve contrast between GFE's placeholder box art
@@ -32,6 +39,101 @@ ApplicationWindow {
         }
 
         SdlGamepadKeyNavigation.enable()
+    }
+
+    // 设备注册流程 - 现在在Component.onCompleted中调用，确保UI已初始化
+    function startDeviceRegistration() {
+        console.log("开始设备注册流程")
+        var deviceCode = PemHttpClient.getDeviceUuid()
+        console.log("设备UUID: " + deviceCode)
+        PemHttpClient.registerDevice(deviceCode, "win10", "5", window, "onRegisterDeviceResponse")
+    }
+
+    // 注册设备响应处理函数
+    function onRegisterDeviceResponse(response) {
+        console.log("注册设备响应: " + response)
+        // 同时返回的内容要写入日志
+        console.log("完整响应内容: " + response)
+        try {
+            var responseObj = JSON.parse(response)
+            if (responseObj.code === 200) {
+                var deviceInfo = responseObj.data
+                currentDeviceId = deviceInfo.deviceId
+                console.log("设备ID: " + currentDeviceId)
+                
+                if (deviceInfo.isBind === true) {
+                    console.log("设备已绑定，跳过二维码显示")
+                    deviceRegistered = true
+                    // 现在可以继续正常流程
+                    showInitialView()
+                } else {
+                    console.log("设备未绑定，获取二维码")
+                    showQrCode = true
+                    PemHttpClient.getQrcode(currentDeviceId, window, "onGetQrcodeResponse")
+                }
+            } else {
+                console.log("设备注册失败: " + responseObj.msg)
+                // 即使失败也继续显示界面，但可能需要用户手动处理
+                showInitialView()
+            }
+        } catch (e) {
+            console.log("解析注册响应失败: " + e)
+            showInitialView()
+        }
+    }
+
+    // 获取二维码响应处理函数
+    function onGetQrcodeResponse(response) {
+        console.log("获取二维码响应: " + response)
+        // 同时返回的内容要写入日志
+        console.log("完整响应内容: " + response)
+        try {
+            var responseObj = JSON.parse(response)
+            if (responseObj.code === 200) {
+                var qrCodeData = responseObj.data
+                var qrCodeValue = qrCodeData.qrCodeUrl
+                
+                // 检查是否是Base64编码的图像数据
+                if (qrCodeValue && qrCodeValue.indexOf('data:image') === 0) {
+                    // 如果是data URL格式，直接使用
+                    currentQrCodeUrl = qrCodeValue
+                } else if (qrCodeValue && qrCodeValue.length > 50) { // 粗略判断是否为Base64字符串
+                    // 假设是Base64编码的图像，转换为data URL格式
+                    currentQrCodeUrl = "data:image/png;base64," + qrCodeValue
+                } else {
+                    // 如果不是Base64编码，假定是普通URL
+                    currentQrCodeUrl = qrCodeValue
+                }
+                
+                console.log("二维码URL: " + currentQrCodeUrl)
+            } else {
+                console.log("获取二维码失败: " + responseObj.msg)
+            }
+        } catch (e) {
+            console.log("解析二维码响应失败: " + e)
+        }
+    }
+
+    // 检查设备绑定状态的定时器
+    Timer {
+        id: checkBindingTimer
+        interval: 5000 // 每5秒检查一次
+        running: showQrCode && !deviceRegistered
+        repeat: true
+        onTriggered: {
+            if (showQrCode && !deviceRegistered) {
+                console.log("检查设备绑定状态")
+                var deviceCode = PemHttpClient.getDeviceUuid()
+                PemHttpClient.registerDevice(deviceCode, "win10", "5", window, "onRegisterDeviceResponse")
+            }
+        }
+    }
+
+    // 显示初始视图
+    function showInitialView() {
+        // 执行我们的早期初始化，然后推送初始视图到StackView
+        doEarlyInit()
+        stackView.push(initialView)
     }
 
     Component.onCompleted: {
@@ -67,6 +169,9 @@ ApplicationWindow {
             unmappedGamepadDialog.unmappedGamepads = SystemProperties.unmappedGamepads
             unmappedGamepadDialog.open()
         }
+        
+        // 在UI组件完全初始化后再开始设备注册流程，以避免触发SDLGamepadKeyNavigation断言
+        startDeviceRegistration()
     }
   
     // It would be better to use TextMetrics here, but it always lays out
@@ -100,10 +205,10 @@ ApplicationWindow {
         focus: true
 
         Component.onCompleted: {
-            // Perform our early initialization before constructing
-            // the initial view and pushing it to the StackView
-            doEarlyInit()
-            push(initialView)
+            // 如果设备已经注册，直接显示初始视图
+            if (deviceRegistered) {
+                showInitialView()
+            }
         }
 
         onCurrentItemChanged: {
@@ -140,6 +245,57 @@ ApplicationWindow {
         // when Menu is consumed by a focused control.
         Keys.onHangupPressed: {
             settingsButton.clicked()
+        }
+    }
+
+    // 二维码显示覆盖层
+    Rectangle {
+        id: qrCodeOverlay
+        anchors.fill: parent
+        color: "#80000000" // 半透明黑色背景
+        visible: showQrCode && !deviceRegistered
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 20
+
+            Text {
+                text: "请扫描二维码绑定设备"
+                font.pointSize: 18
+                color: "white"
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            // 二维码图片显示（使用Base64 URL）
+            Image {
+                id: qrCodeImage
+                width: 200
+                height: 200
+                source: currentQrCodeUrl ? currentQrCodeUrl : ""
+                fillMode: Image.PreserveAspectFit
+                visible: currentQrCodeUrl !== ""
+                onSourceChanged: {
+                    console.log("二维码图片源已更新: " + source)
+                }
+            }
+
+            // 显示加载状态
+            Text {
+                id: loadingText
+                text: "等待设备绑定..."
+                font.pointSize: 14
+                color: "white"
+                visible: currentQrCodeUrl === ""
+            }
+
+            Button {
+                text: "刷新二维码"
+                onClicked: {
+                    if (currentDeviceId) {
+                        PemHttpClient.getQrcode(currentDeviceId, window, "onGetQrcodeResponse")
+                    }
+                }
+            }
         }
     }
 
@@ -231,7 +387,7 @@ ApplicationWindow {
             id: titleLabel
             visible: toolBar.width > 700
             anchors.fill: parent
-            text: stackView.currentItem.objectName
+            text: stackView.currentItem ? stackView.currentItem.objectName : ""
             font.pointSize: 20
             elide: Label.ElideRight
             horizontalAlignment: Qt.AlignHCenter
@@ -270,7 +426,7 @@ ApplicationWindow {
                 // We need this label to always be visible so it can occupy
                 // the remaining space in the RowLayout. To "hide" it, we
                 // just set the text to empty string.
-                text: !titleLabel.visible ? stackView.currentItem.objectName : ""
+                text: !titleLabel.visible ? (stackView.currentItem ? stackView.currentItem.objectName : "") : ""
             }
 
             Label {
@@ -491,12 +647,12 @@ ApplicationWindow {
 
         onClosed: {
             if (quitAfter) {
-                Qt.quit()
-            }
+                quitAfter = false
 
-            // StreamSegue assumes its dialog will be re-created each time we
-            // start streaming, so fake it by wiping out the text each time.
-            text = ""
+                // StreamSegue assumes its dialog will be re-created each time we
+                // start streaming, so fake it by wiping out the text each time.
+                text = ""
+            }
         }
     }
 

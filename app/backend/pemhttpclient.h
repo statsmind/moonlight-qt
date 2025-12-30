@@ -19,7 +19,10 @@
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QRegularExpression>
+#include <QLoggingCategory>
 #include <memory>
+
+Q_DECLARE_LOGGING_CATEGORY(pemHttpClient)
 
 // 数据模型类定义
 class HttpResponse {

@@ -7,3 +7,6 @@ build/
 config.tests/*/.qmake.stash
 config.tests/*/Makefile
 .idea/
+*.pdb
+wix/
+wix/Moonlight.sln

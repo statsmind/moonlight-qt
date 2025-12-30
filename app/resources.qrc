@@ -95,7 +95,7 @@
         <file alias="vt_renderer.metal">shaders/vt_renderer.metal</file>
     </qresource>
     <qresource prefix="/resources">
-        <file alias="fullchain.crt">../resources/fullchain.crt</file>
-        <file alias="client.key">../resources/client.key</file>
+        <file alias="fullchain.crt">resources/fullchain.crt</file>
+        <file alias="client.key">resources/client.key</file>
     </qresource>
 </RCC>
