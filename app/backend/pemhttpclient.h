@@ -132,9 +132,11 @@ public:
     Q_INVOKABLE void registerDevice(const QString &deviceCode, const QString &model = "win10", const QString &type = "5", QObject *callbackObject = nullptr, const QString &callbackMethod = QString());
     Q_INVOKABLE void getQrcode(const QString &deviceId, QObject *callbackObject = nullptr, const QString &callbackMethod = QString());
     Q_INVOKABLE void queryFreeWindows(const QString &gameId, const QString &userId, const QString &gpuId = "4060", QObject *callbackObject = nullptr, const QString &callbackMethod = QString());
+    Q_INVOKABLE void launch(QObject *callbackObject = nullptr, const QString &callbackMethod = QString());
 
     // 获取设备唯一标识
     Q_INVOKABLE QString getDeviceUuid() const;
+    void setBaseUrl(const QString &url);
 
 signals:
     void requestFinished(const QString &response);

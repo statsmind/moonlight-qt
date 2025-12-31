@@ -117,6 +117,8 @@ private:
             if (!online && m_Computer->state != NvComputer::CS_OFFLINE) {
                 qInfo() << m_Computer->name << "is now offline";
                 m_Computer->state = NvComputer::CS_OFFLINE;
+                qInfo() << m_Computer->name << "is set to online forcely";
+                m_Computer->state = NvComputer::CS_ONLINE;
                 stateChanged = true;
             }
 
@@ -163,7 +165,8 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
       m_PollingRef(0),
       m_MdnsBrowser(nullptr),
       m_CompatFetcher(nullptr),
-      m_NeedsDelayedFlush(false)
+      m_NeedsDelayedFlush(false),
+      m_PemHttpClient(nullptr)
 {
     QSettings settings;
 
@@ -244,6 +247,9 @@ ComputerManager::~ComputerManager()
     for (NvComputer* computer : m_KnownHosts) {
         delete computer;
     }
+    
+    // 删除PemHttpClient实例
+    delete m_PemHttpClient;
 }
 
 void DelayedFlushThread::run() {
@@ -360,29 +366,46 @@ QHostAddress ComputerManager::getBestGlobalAddressV6(QVector<QHostAddress> &addr
 
 void ComputerManager::startPolling()
 {
+    qInfo() << "Starting computer polling";
+
     QWriteLocker lock(&m_Lock);
 
     if (++m_PollingRef > 1) {
         return;
     }
 
-    if (m_Prefs->enableMdns) {
-        // Start an MDNS query for GameStream hosts
-        m_MdnsServer.reset(new QMdnsEngine::Server());
-        m_MdnsBrowser = new QMdnsEngine::Browser(m_MdnsServer.data(), "_nvstream._tcp.local.");
-        connect(m_MdnsBrowser, &QMdnsEngine::Browser::serviceAdded,
-                this, [this](const QMdnsEngine::Service& service) {
-            qInfo() << "Discovered mDNS host:" << service.hostname();
+//    if (m_Prefs->enableMdns) {
+//        // Start an MDNS query for GameStream hosts
+//        m_MdnsServer.reset(new QMdnsEngine::Server());
+//        m_MdnsBrowser = new QMdnsEngine::Browser(m_MdnsServer.data(), "_nvstream._tcp.local.");
+//        connect(m_MdnsBrowser, &QMdnsEngine::Browser::serviceAdded,
+//                this, [this](const QMdnsEngine::Service& service) {
+//                    qInfo() << "Discovered mDNS host:" << service.hostname();
+//
+//                    MdnsPendingComputer* pendingComputer = new MdnsPendingComputer(m_MdnsServer, service);
+//                    connect(pendingComputer, &MdnsPendingComputer::resolvedHost,
+//                            this, &ComputerManager::handleMdnsServiceResolved);
+//                    m_PendingResolution.append(pendingComputer);
+//                });
+//    }
+//    else {
+//        qWarning() << "mDNS is disabled by user preference";
+//    }
 
-            MdnsPendingComputer* pendingComputer = new MdnsPendingComputer(m_MdnsServer, service);
-            connect(pendingComputer, &MdnsPendingComputer::resolvedHost,
-                    this, &ComputerManager::handleMdnsServiceResolved);
-            m_PendingResolution.append(pendingComputer);
+    // 不再启动mDNS发现，直接使用PemHttpClient查询可用主机
+    if (m_PemHttpClient == nullptr) {
+        m_PemHttpClient = new PemHttpClient(this);
+        connect(m_PemHttpClient, &PemHttpClient::requestFinished,
+                this, &ComputerManager::handleQueryFreeWindowsResponse);
+        connect(m_PemHttpClient, &PemHttpClient::requestError,
+                this, [this](const QString& error) {
+            qWarning() << "QueryFreeWindows request failed:" << error;
         });
     }
-    else {
-        qWarning() << "mDNS is disabled by user preference";
-    }
+
+    // 调用queryFreeWindows API获取可用主机
+    // 使用固定的测试参数
+    m_PemHttpClient->queryFreeWindows("21", "1900473926153678849", "4060", nullptr, "");
 
     // Start polling threads for each known host
     QMapIterator<QString, NvComputer*> i(m_KnownHosts);
@@ -390,6 +413,108 @@ void ComputerManager::startPolling()
         i.next();
         startPollingComputer(i.value());
     }
+}
+
+// 新增处理queryFreeWindows响应的方法
+void ComputerManager::handleQueryFreeWindowsResponse(const QString& response)
+{
+    qInfo() << "Received queryFreeWindows response:" << response;
+    
+    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
+    if (doc.isNull()) {
+        qWarning() << "Invalid JSON response from queryFreeWindows";
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    int code = obj["code"].toInt();
+    if (code != 200) {
+        qWarning() << "queryFreeWindows returned error code:" << code;
+        return;
+    }
+    
+    QJsonObject data = obj["data"].toObject();
+    QString deviceIp = data["deviceIp"].toString();
+    QString deviceId = data["deviceId"].toString();
+    QJsonArray portGroupList = data["portGroupList"].toArray();
+    
+    if (deviceIp.isEmpty()) {
+        qWarning() << "No device IP in queryFreeWindows response";
+        return;
+    }
+
+    NvAddress address(deviceIp, 21001);
+
+    NvComputer* newComputer = new NvComputer();
+    newComputer->name = "Cloud Host: " + deviceIp;  // 使用IP作为名称
+    newComputer->uuid = deviceId;  // 生成UUID
+    newComputer->state = NvComputer::CS_ONLINE;  // 直接标记为在线
+    newComputer->pairState = NvComputer::PS_PAIRED;  // 直接标记为已配对
+    newComputer->manualAddress = address;
+    newComputer->activeAddress = address;
+    newComputer->activeHttpsPort = address.port();  // 使用forwardPort作为HTTPS端口
+    newComputer->isSupportedServerVersion = true;  // 假设支持
+    newComputer->appVersion = "5.0.0";  // 假设一个版本号
+    newComputer->serverCert = QSslCertificate();  // 使用空证书
+    newComputer->macAddress = "";  // 空MAC地址
+    newComputer->gfeVersion = "";  // 空GFE版本
+    newComputer->currentGameId = 0;  // 无当前游戏
+
+    NvApp app;
+    app.name = "街头霸王";
+    app.id = 0;
+    app.directLaunch = true;
+    newComputer->appList.append(app);
+
+    if (m_KnownHosts.contains(deviceId)){
+        qInfo() << "Computer with UUID" << newComputer->uuid << "already exists, updating instead";
+        NvComputer* existingComputer = m_KnownHosts.value(newComputer->uuid);
+
+        // 更新现有计算机的信息
+        {
+            QWriteLocker computerLock(&existingComputer->lock);
+            existingComputer->name = newComputer->name;
+            existingComputer->manualAddress = newComputer->manualAddress;
+            existingComputer->activeAddress = newComputer->activeAddress;
+            existingComputer->activeHttpsPort = newComputer->activeHttpsPort;
+            existingComputer->state = newComputer->state;
+            existingComputer->pairState = newComputer->pairState;
+            existingComputer->isSupportedServerVersion = newComputer->isSupportedServerVersion;
+            existingComputer->appVersion = newComputer->appVersion;
+            existingComputer->serverCert = newComputer->serverCert;
+            existingComputer->macAddress = newComputer->macAddress;
+            existingComputer->gfeVersion = newComputer->gfeVersion;
+            existingComputer->currentGameId = newComputer->currentGameId;
+            existingComputer->appList = newComputer->appList;
+            // pendingQuit is a private member, so we don't set it directly
+        }
+
+        // 通知状态变化
+        emit computerStateChanged(existingComputer);
+
+        // 清理临时对象
+        delete newComputer;
+
+        // 不轮询此计算机
+        // startPollingComputer(existingComputer);
+    } else {
+        // 添加新的计算机到列表
+        m_KnownHosts[newComputer->uuid] = newComputer;
+
+        // 保存主机信息
+        saveHost(newComputer);
+
+        // 不轮询此计算机
+        // startPollingComputer(newComputer);
+
+        // 发出计算机添加信号
+        emit computerStateChanged(newComputer);
+    }
+
+    // 添加新主机，跳过网络查询，因为这些主机已经预配置好了
+    // addNewHost(address, false, NvAddress(), true); // true表示跳过网络查询
+    emit computerAddCompleted(true, false);
+    return;
 }
 
 // Must hold m_Lock for write
@@ -727,11 +852,11 @@ void ComputerManager::addNewHostManually(QString address)
     QUrl url = QUrl::fromUserInput("moonlight://" + address);
     if (url.isValid() && !url.host().isEmpty() && url.scheme() == "moonlight") {
         // If there wasn't a port specified, use the default
-        addNewHost(NvAddress(url.host(), url.port(DEFAULT_HTTP_PORT)), false);
+        addNewHost(NvAddress(url.host(), url.port(DEFAULT_HTTP_PORT)), false, NvAddress(), false);
     }
     else if (QHostAddress(address).protocol() == QAbstractSocket::IPv6Protocol) {
         // The user specified an IPv6 literal without URL escaping, so use the default port
-        addNewHost(NvAddress(address, DEFAULT_HTTP_PORT), false);
+        addNewHost(NvAddress(address, DEFAULT_HTTP_PORT), false, NvAddress(), false);
     }
     else {
         emit computerAddCompleted(false, false);
@@ -743,11 +868,12 @@ class PendingAddTask : public QObject, public QRunnable
     Q_OBJECT
 
 public:
-    PendingAddTask(ComputerManager* computerManager, NvAddress address, NvAddress mdnsIpv6Address, bool mdns)
+    PendingAddTask(ComputerManager* computerManager, NvAddress address, NvAddress mdnsIpv6Address, bool mdns, bool skipNetworkQuery = false)
         : m_ComputerManager(computerManager),
           m_Address(address),
           m_MdnsIpv6Address(mdnsIpv6Address),
           m_Mdns(mdns),
+          m_SkipNetworkQuery(skipNetworkQuery),  // 新增参数
           m_AboutToQuit(false)
     {
         connect(this, &PendingAddTask::computerAddCompleted,
@@ -771,6 +897,11 @@ private:
 
     QString fetchServerInfo(NvHTTP& http)
     {
+        // 如果跳过网络查询，直接返回空字符串
+        if (m_SkipNetworkQuery) {
+            return QString();
+        }
+
         QString serverInfo;
 
         // Do nothing if we're quitting
@@ -820,6 +951,95 @@ private:
 
     void run()
     {
+        // 如果跳过网络查询，直接创建一个预配置的计算机对象
+        if (m_SkipNetworkQuery) {
+            // 尝试获取服务器信息，如果失败则使用默认值
+            QString serverInfo;
+            NvComputer* newComputer = nullptr;
+            
+            try {
+                NvHTTP http(m_Address, 0, QSslCertificate());
+                serverInfo = http.getServerInfo(NvHTTP::NVLL_VERBOSE);
+                
+                // 如果成功获取服务器信息，使用正常的构造函数
+                newComputer = new NvComputer(http, serverInfo);
+            } catch (...) {
+                // 如果无法获取服务器信息，创建一个基本的计算机对象
+                newComputer = new NvComputer();
+                
+                // 直接配置计算机对象
+                newComputer->name = "Cloud Host: " + m_Address.address();  // 使用IP作为名称
+                newComputer->uuid = m_Address.address().replace(".", "_") + QString::number(m_Address.port());  // 生成UUID
+                newComputer->state = NvComputer::CS_ONLINE;  // 直接标记为在线
+                newComputer->pairState = NvComputer::PS_PAIRED;  // 直接标记为已配对
+                newComputer->manualAddress = m_Address;
+                newComputer->activeAddress = m_Address;
+                newComputer->activeHttpsPort = m_Address.port();  // 使用forwardPort作为HTTPS端口
+                newComputer->isSupportedServerVersion = true;  // 假设支持
+                newComputer->appVersion = "5.0.0";  // 假设一个版本号
+                newComputer->serverCert = QSslCertificate();  // 使用空证书
+                newComputer->macAddress = "";  // 空MAC地址
+                newComputer->gfeVersion = "";  // 空GFE版本
+                newComputer->currentGameId = 0;  // 无当前游戏
+                // pendingQuit is a private member, so we don't set it directly
+            }
+            
+            // 将计算机添加到已知主机列表
+            {
+                QWriteLocker lock(&m_ComputerManager->m_Lock);
+                
+                // 检查是否已经存在具有相同UUID的计算机
+                if (m_ComputerManager->m_KnownHosts.contains(newComputer->uuid)) {
+                    qInfo() << "Computer with UUID" << newComputer->uuid << "already exists, updating instead";
+                    NvComputer* existingComputer = m_ComputerManager->m_KnownHosts.value(newComputer->uuid);
+                    
+                    // 更新现有计算机的信息
+                    {
+                        QWriteLocker computerLock(&existingComputer->lock);
+                        existingComputer->name = newComputer->name;
+                        existingComputer->manualAddress = newComputer->manualAddress;
+                        existingComputer->activeAddress = newComputer->activeAddress;
+                        existingComputer->activeHttpsPort = newComputer->activeHttpsPort;
+                        existingComputer->state = newComputer->state;
+                        existingComputer->pairState = newComputer->pairState;
+                        existingComputer->isSupportedServerVersion = newComputer->isSupportedServerVersion;
+                        existingComputer->appVersion = newComputer->appVersion;
+                        existingComputer->serverCert = newComputer->serverCert;
+                        existingComputer->macAddress = newComputer->macAddress;
+                        existingComputer->gfeVersion = newComputer->gfeVersion;
+                        existingComputer->currentGameId = newComputer->currentGameId;
+                        // pendingQuit is a private member, so we don't set it directly
+                    }
+                    
+                    // 通知状态变化
+                    emit computerStateChanged(existingComputer);
+                    
+                    // 清理临时对象
+                    delete newComputer;
+                    
+                    // 开始轮询此计算机
+                    m_ComputerManager->startPollingComputer(existingComputer);
+                }
+                else {
+                    // 添加新的计算机到列表
+                    m_ComputerManager->m_KnownHosts[newComputer->uuid] = newComputer;
+                    
+                    // 保存主机信息
+                    m_ComputerManager->saveHost(newComputer);
+                    
+                    // 开始轮询此计算机
+                    m_ComputerManager->startPollingComputer(newComputer);
+                    
+                    // 发出计算机添加信号
+                    emit computerStateChanged(newComputer);
+                }
+            }
+            
+            // 发出成功信号
+            emit computerAddCompleted(true, false);
+            return;
+        }
+        
         NvHTTP http(m_Address, 0, QSslCertificate());
 
         qInfo() << "Processing new PC at" << m_Address.toString() << "from" << (m_Mdns ? "mDNS" : "user") << "with IPv6 address" << m_MdnsIpv6Address.toString();
@@ -973,14 +1193,15 @@ private:
     NvAddress m_Address;
     NvAddress m_MdnsIpv6Address;
     bool m_Mdns;
+    bool m_SkipNetworkQuery;  // 新增参数
     bool m_AboutToQuit;
 };
 
-void ComputerManager::addNewHost(NvAddress address, bool mdns, NvAddress mdnsIpv6Address)
+void ComputerManager::addNewHost(NvAddress address, bool mdns, NvAddress mdnsIpv6Address, bool skipNetworkQuery)
 {
     // Punt to a worker thread to avoid stalling the
     // UI while waiting for serverinfo query to complete
-    PendingAddTask* addTask = new PendingAddTask(this, address, mdnsIpv6Address, mdns);
+    PendingAddTask* addTask = new PendingAddTask(this, address, mdnsIpv6Address, mdns, skipNetworkQuery);
     QThreadPool::globalInstance()->start(addTask);
 }
 

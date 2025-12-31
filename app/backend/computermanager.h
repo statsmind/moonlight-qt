@@ -3,6 +3,7 @@
 #include "nvcomputer.h"
 #include "settings/streamingpreferences.h"
 #include "settings/compatfetcher.h"
+#include "pemhttpclient.h"
 
 #include <qmdnsengine/server.h>
 #include <qmdnsengine/cache.h>
@@ -228,7 +229,7 @@ public:
 
     Q_INVOKABLE void addNewHostManually(QString address);
 
-    void addNewHost(NvAddress address, bool mdns, NvAddress mdnsIpv6Address = NvAddress());
+    void addNewHost(NvAddress address, bool mdns, NvAddress mdnsIpv6Address = NvAddress(), bool skipNetworkQuery = false);
 
     QString generatePinString();
 
@@ -261,6 +262,9 @@ private slots:
 
     void handleMdnsServiceResolved(MdnsPendingComputer* computer, QVector<QHostAddress>& addresses);
 
+    // 新增用于处理PemHttpClient查询结果的槽函数
+    void handleQueryFreeWindowsResponse(const QString& response);
+
 private:
     void saveHosts();
 
@@ -284,4 +288,7 @@ private:
     QMutex m_DelayedFlushMutex; // Lock ordering: Must never be acquired while holding NvComputer lock
     QWaitCondition m_DelayedFlushCondition;
     bool m_NeedsDelayedFlush;
+    
+    // 添加PemHttpClient实例
+    PemHttpClient* m_PemHttpClient;
 };

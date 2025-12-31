@@ -31,6 +31,10 @@ PemHttpClient::~PemHttpClient()
     qCInfo(pemHttpClient) << "PemHttpClient析构函数被调用";
 }
 
+void PemHttpClient::setBaseUrl(const QString &url) {
+    m_baseUrl = url;
+}
+
 bool PemHttpClient::loadCertificateAndKey()
 {
     const QString clientCertPath = ":/resources/fullchain.crt";
@@ -232,8 +236,12 @@ void PemHttpClient::sendGetRequest(const QString &path, QObject *callbackObject,
 {
     qCInfo(pemHttpClient) << "发送GET请求，路径:" << path;
     qCInfo(pemHttpClient) << "回调对象:" << callbackObject << "方法:" << callbackMethod;
-    
-    QUrl url(m_baseUrl + "/" + path.mid(path.startsWith('/') ? 1 : 0));
+
+    QString urlStr = path;
+    if (!path.startsWith("http")) {
+        urlStr = m_baseUrl + "/" + path.mid(path.startsWith('/') ? 1 : 0);
+    }
+    QUrl url(urlStr);
     qCInfo(pemHttpClient) << "请求完整URL:" << url.toString();
 
     QNetworkRequest request(url);
@@ -283,7 +291,11 @@ void PemHttpClient::sendPostRequest(const QString &path, const QString &jsonBody
     qCInfo(pemHttpClient) << "请求体长度:" << jsonBody.length() << "字节";
     qCInfo(pemHttpClient) << "回调对象:" << callbackObject << "方法:" << callbackMethod;
 
-    QUrl url(m_baseUrl + "/" + path.mid(path.startsWith('/') ? 1 : 0));
+    QString urlStr = path;
+    if (!path.startsWith("http")) {
+        urlStr = m_baseUrl + "/" + path.mid(path.startsWith('/') ? 1 : 0);
+    }
+    QUrl url(urlStr);
     qCInfo(pemHttpClient) << "请求完整URL:" << url.toString();
 
     QNetworkRequest request(url);
@@ -367,4 +379,10 @@ void PemHttpClient::queryFreeWindows(const QString &gameId, const QString &userI
     qCInfo(pemHttpClient) << "请求体JSON:" << jsonBody;
     
     sendPostRequest("/business/cloudGameApp/queryFreeWindows", jsonBody, callbackObject, callbackMethod);
+}
+
+void PemHttpClient::launch(QObject *callbackObject, const QString &callbackMethod) {
+    QString path = QString("/launch?appid=881448767&mode=1920x1080x60&gametype=null&game_url=steam://rungameid/1259970&cdkey=null&token_pin=19863215271796039&login_mode=null&is_close_game=false&additionalStates=1&sops=1&rikey=7FF64301BF3D504B9D6938DEAA23512D&rikeyid=-578877480&localAudioPlayMode=0&surroundAudioInfo-196610&uremoteControllersBitmap=1&gcmap=1&gcpersist=0&corever=1&uniqueid=0123456789ABCDEF&uuid=f29ba575-005d-4eb0-9f3f-b835074a0853");
+    qCInfo(pemHttpClient) << "请求路径:" << path;
+    sendGetRequest(path, callbackObject, callbackMethod);
 }

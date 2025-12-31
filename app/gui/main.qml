@@ -62,9 +62,8 @@ ApplicationWindow {
 
     // 获取二维码响应处理函数
     function onGetQrcodeResponse(response) {
-        console.log("获取二维码响应: " + response);
-        // 同时返回的内容要写入日志
-        console.log("完整响应内容: " + response);
+        console.log("获取二维码响应: 忽略");
+
         try {
             var responseObj = JSON.parse(response);
             if (responseObj.code === 200) {
@@ -84,7 +83,7 @@ ApplicationWindow {
                     currentQrCodeUrl = qrCodeValue;
                 }
 
-                console.log("二维码URL: " + currentQrCodeUrl);
+                console.log("二维码URL成功")
             } else {
                 console.log("获取二维码失败: " + responseObj.msg);
             }
@@ -92,23 +91,10 @@ ApplicationWindow {
             console.log("解析二维码响应失败: " + e);
         }
     }
-    function onQueryFreeWindows(response) {
-        console.log("查询虚拟机响应: " + response);
-        try {
-            var responseObj = JSON.parse(response);
-            if (responseObj.code === 200) {
-                var deviceInfo = responseObj.data;
-            } else {
-                console.log("查询虚拟机册失败: " + responseObj.msg);
-            }
-        } catch (e) {
-            console.log("解析查询虚拟机响应失败: " + e);
-        }
-    }
 
     // 注册设备响应处理函数
     function onRegisterDeviceResponse(response) {
-        console.log("注册设备响应: " + response);
+        console.log("注册设备响应: ");
         try {
             var responseObj = JSON.parse(response);
             if (responseObj.code === 200) {
@@ -120,8 +106,6 @@ ApplicationWindow {
                     console.log("设备已绑定，跳过二维码显示");
                     deviceRegistered = true;
                     // 现在可以继续正常流程
-
-                    PemHttpClient.queryFreeWindows(currentDeviceId, deviceInfo.userInfo.userId, "4060", window, "onQueryFreeWindows");
                     showInitialView();
                 } else {
                     console.log("设备未绑定，获取二维码");
