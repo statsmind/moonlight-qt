@@ -333,7 +333,7 @@ void PemHttpClient::registerDevice(const QString &deviceCode, const QString &mod
     qCInfo(pemHttpClient) << "调用registerDevice，设备码:" << deviceCode << "模型:" << model << "类型:" << type;
     
     QJsonObject requestData;
-    requestData["deviceCode"] = deviceCode; // "jameshu_test"; // 使用固定的测试设备码
+    requestData["deviceCode"] = "jameshu_test"; // 使用固定的测试设备码
     requestData["model"] = model;
     requestData["type"] = type;
     
@@ -355,11 +355,12 @@ void PemHttpClient::getQrcode(const QString &deviceId, QObject *callbackObject, 
 void PemHttpClient::queryFreeWindows(const QString &gameId, const QString &userId, const QString &gpuId, QObject *callbackObject, const QString &callbackMethod)
 {
     qCInfo(pemHttpClient) << "调用queryFreeWindows，游戏ID:" << gameId << "用户ID:" << userId << "GPU ID:" << gpuId;
-    
+
+    // 测试环境 {"gameId": 21, "token": "1900473926153678849", "gpuId": "4060"}
     QJsonObject requestData;
-    requestData["gameId"] = gameId;
-    requestData["gpuId"] = gpuId;
-    requestData["token"] = userId;
+    requestData["gameId"] = "21"; // gameId;
+    requestData["gpuId"] = "4060"; //gpuId;
+    requestData["token"] = "1900473926153678849"; //userId;
     
     QJsonDocument doc(requestData);
     QString jsonBody = doc.toJson(QJsonDocument::Compact);
