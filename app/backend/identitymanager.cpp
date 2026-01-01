@@ -2,6 +2,7 @@
 #include "utils.h"
 
 #include <QDebug>
+#include <QFile>
 
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
@@ -112,6 +113,33 @@ void IdentityManager::createCredentials(QSettings& settings)
 IdentityManager::IdentityManager()
 {
     QSettings settings;
+
+    /**
+     * 首先从 resources 目录下加载客户端证书，如果没有则从 settings 中加载
+     */
+    QFile resourceCertFile(":/resources/fullchain.crt");
+    QFile resourceKeyFile(":/resources/client.key");
+
+    if (resourceCertFile.exists() && resourceKeyFile.exists()) {
+        if (resourceCertFile.open(QIODevice::ReadOnly)) {
+            m_CachedPemCert = resourceCertFile.readAll();
+            qInfo() << "Loaded certificate fullchain.crt from Qt resources";
+        }
+
+        if (resourceKeyFile.open(QIODevice::ReadOnly)) {
+            m_CachedPrivateKey = resourceKeyFile.readAll();
+            qInfo() << "Loaded private key client.key from Qt resources";
+        }
+
+        // 如果从文件加载成功，保存到设置中
+        if (!m_CachedPemCert.isEmpty() && !m_CachedPrivateKey.isEmpty()) {
+            settings.setValue(SER_CERT, m_CachedPemCert);
+            settings.setValue(SER_KEY, m_CachedPrivateKey);
+            qInfo() << "Saved loaded credentials to settings";
+        } else {
+            qInfo() << "No existing credentials found";
+        }
+    }
 
     m_CachedPemCert = settings.value(SER_CERT).toByteArray();
     m_CachedPrivateKey = settings.value(SER_KEY).toByteArray();
