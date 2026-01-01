@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHostAddress>
+#include <QMap>
 
 #define DEFAULT_HTTP_PORT 47989
 #define DEFAULT_HTTPS_PORT 47984
@@ -36,4 +37,17 @@ public:
 private:
     QString m_Address;
     uint16_t m_Port;
+};
+
+class NvProxyAddress : public NvAddress
+{
+public:
+    NvProxyAddress(QJsonArray portGroupList);
+    explicit NvProxyAddress(QString addr, uint16_t port, QJsonArray portGroupList);
+    explicit NvProxyAddress(QHostAddress addr, uint16_t port, QJsonArray portGroupList);
+
+    void setPortMapping(QJsonArray portGroupList);
+
+private:
+    QMap<int, int>* m_PortMapping;
 };

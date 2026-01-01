@@ -381,8 +381,8 @@ void PemHttpClient::queryFreeWindows(const QString &gameId, const QString &userI
     sendPostRequest("/business/cloudGameApp/queryFreeWindows", jsonBody, callbackObject, callbackMethod);
 }
 
-void PemHttpClient::launch(QObject *callbackObject, const QString &callbackMethod) {
-    QString path = QString("/launch?appid=881448767&mode=1920x1080x60&gametype=null&game_url=steam://rungameid/1259970&cdkey=null&token_pin=19863215271796039&login_mode=null&is_close_game=false&additionalStates=1&sops=1&rikey=7FF64301BF3D504B9D6938DEAA23512D&rikeyid=-578877480&localAudioPlayMode=0&surroundAudioInfo-196610&uremoteControllersBitmap=1&gcmap=1&gcpersist=0&corever=1&uniqueid=0123456789ABCDEF&uuid=f29ba575-005d-4eb0-9f3f-b835074a0853");
-    qCInfo(pemHttpClient) << "请求路径:" << path;
-    sendGetRequest(path, callbackObject, callbackMethod);
-}
+//void PemHttpClient::launch(QObject *callbackObject, const QString &callbackMethod) {
+//    QString path = QString("/launch?appid=881448767&mode=1920x1080x60&gametype=null&game_url=steam://rungameid/1259970&cdkey=null&token_pin=19863215271796039&login_mode=null&is_close_game=false&additionalStates=1&sops=1&rikey=7FF64301BF3D504B9D6938DEAA23512D&rikeyid=-578877480&localAudioPlayMode=0&surroundAudioInfo-196610&uremoteControllersBitmap=1&gcmap=1&gcpersist=0&corever=1&uniqueid=0123456789ABCDEF&uuid=f29ba575-005d-4eb0-9f3f-b835074a0853");
+//    qCInfo(pemHttpClient) << "请求路径:" << path;
+//    sendGetRequest(path, callbackObject, callbackMethod);
+//}

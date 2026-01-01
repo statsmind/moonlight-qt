@@ -6,6 +6,9 @@
 #include <QHostInfo>
 #include <QNetworkInterface>
 #include <QNetworkProxy>
+#include <QMap>
+#include <QJsonArray>
+#include <QJsonObject>
 
 #define SER_NAME "hostname"
 #define SER_UUID "uuid"
@@ -22,6 +25,9 @@
 #define SER_SRVCERT "srvcert"
 #define SER_CUSTOMNAME "customname"
 #define SER_NVIDIASOFTWARE "nvidiasw"
+#define SER_PORTMAP "portmap"
+#define SER_PORTMAP_KEY "portmap_key"
+#define SER_PORTMAP_VAL "portmap_val"
 
 NvComputer::NvComputer(QSettings& settings)
 {
@@ -63,6 +69,16 @@ NvComputer::NvComputer(QSettings& settings)
     this->isSupportedServerVersion = true;
     this->externalPort = this->remoteAddress.port();
     this->activeHttpsPort = 0;
+
+    int portCount = settings.beginReadArray(SER_PORTMAP);
+    for (int i = 0; i < portCount; i++) {
+        settings.setArrayIndex(i);
+
+        int internalPort = settings.value(SER_PORTMAP_KEY).toInt();
+        int forwardPort = settings.value(SER_PORTMAP_VAL).toInt();
+        this->portMapping.insert(internalPort, forwardPort);
+    }
+    settings.endArray();
 }
 
 void NvComputer::setRemoteAddress(QHostAddress address)
@@ -103,6 +119,18 @@ void NvComputer::serialize(QSettings& settings, bool serializeApps) const
         }
         settings.endArray();
     }
+
+    if (!portMapping.isEmpty()) {
+        settings.remove(SER_PORTMAP);
+        settings.beginWriteArray(SER_PORTMAP);
+        int i = 0;
+        for (auto it = portMapping.begin(); it != portMapping.end(); it++) {
+            settings.setArrayIndex(i++);
+            settings.setValue(SER_PORTMAP_KEY, it.key());
+            settings.setValue(SER_PORTMAP_VAL, it.value());
+        }
+        settings.endArray();
+    }
 }
 
 bool NvComputer::isEqualSerialized(const NvComputer &that) const
@@ -117,7 +145,8 @@ bool NvComputer::isEqualSerialized(const NvComputer &that) const
            this->manualAddress == that.manualAddress &&
            this->serverCert == that.serverCert &&
            this->isNvidiaServerSoftware == that.isNvidiaServerSoftware &&
-           this->appList == that.appList;
+           this->appList == that.appList &&
+           this->portMapping == that.portMapping;
 }
 
 void NvComputer::sortAppList()
@@ -477,6 +506,37 @@ bool NvComputer::updateAppList(QVector<NvApp> newAppList) {
     return true;
 }
 
+bool NvComputer::updatePortMapping(QMap<int, int> newPortMapping) {
+    if (portMapping == newPortMapping) {
+        return false;
+    }
+
+    for (auto it = newPortMapping.begin(); it != newPortMapping.end(); it++) {
+        portMapping[it.key()] = it.value();
+    }
+
+    return true;
+}
+
+int NvComputer::applyPortMapping(int port) {
+    if (portMapping.contains(port)) {
+        return portMapping[port];
+    }
+
+    return port;
+}
+
+void NvComputer::updatePortMapping(QJsonArray portGroupList)
+{
+    for (int i = 0; i < portGroupList.size(); i++) {
+        QJsonObject portGroup = portGroupList[i].toObject();
+        int forwardPort = portGroup["forwardPort"].toInt();
+        int internalPort = portGroup["internalPort"].toInt();
+
+        portMapping[internalPort] = forwardPort;
+    }
+}
+
 QVector<NvAddress> NvComputer::uniqueAddresses() const
 {
     QReadLocker readLocker(&lock);
@@ -570,6 +630,10 @@ bool NvComputer::update(const NvComputer& that)
     if (!that.appList.isEmpty()) {
         // updateAppList() handles merging client-side attributes
         updateAppList(that.appList);
+    }
+
+    if (!that.portMapping.isEmpty()) {
+        updatePortMapping(that.portMapping);
     }
 
     return changed;

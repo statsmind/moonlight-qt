@@ -9,6 +9,7 @@
 #include <QUrl>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QMap>
 
 class NvComputer;
 
@@ -113,6 +114,8 @@ public:
 
     explicit NvHTTP(NvComputer* computer, QNetworkAccessManager* nam = nullptr);
 
+    void setPortMapping(QMap<int, int> portMapping);
+
     static
     int
     getCurrentGame(QString serverInfo);
@@ -170,6 +173,7 @@ public:
              bool localAudio,
              int gamepadMask,
              bool persistGameControllersOnDisconnect,
+             QString tokenPin,
              QString& rtspSessionUrl);
 
     QVector<NvApp>
@@ -198,4 +202,5 @@ private:
     NvAddress m_Address;
     QNetworkAccessManager* m_Nam;
     QSslCertificate m_ServerCert;
+    QMap<int, int> m_PortMapping;
 };

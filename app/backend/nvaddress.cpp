@@ -1,6 +1,8 @@
 #include "nvaddress.h"
 
 #include <QHostAddress>
+#include <QJsonObject>
+#include <QJsonArray>
 
 NvAddress::NvAddress()
 {
@@ -61,5 +63,36 @@ QString NvAddress::toString() const
     }
     else {
         return QString("%1:%2").arg(m_Address).arg(m_Port);
+    }
+}
+
+NvProxyAddress::NvProxyAddress(QJsonArray portGroupList)
+        : NvAddress()
+{
+    m_PortMapping = new QMap<int, int>();
+    setPortMapping(portGroupList);
+}
+
+NvProxyAddress::NvProxyAddress(QString addr, uint16_t port, QJsonArray portGroupList)
+    : NvAddress(QHostAddress(addr), port)
+{
+    m_PortMapping = new QMap<int, int>();
+    setPortMapping(portGroupList);
+}
+
+NvProxyAddress::NvProxyAddress(QHostAddress addr, uint16_t port, QJsonArray portGroupList)
+    : NvAddress(addr, port)
+{
+    m_PortMapping = new QMap<int, int>();
+    setPortMapping(portGroupList);
+}
+
+void NvProxyAddress::setPortMapping(QJsonArray portGroupList) {
+    for (int i = 0; i < portGroupList.size(); i++) {
+        QJsonObject portGroup = portGroupList[i].toObject();
+        int forwardPort = portGroup["forwardPort"].toInt();
+        int internalPort = portGroup["internalPort"].toInt();
+
+        m_PortMapping->insert(internalPort, forwardPort);
     }
 }

@@ -10,6 +10,7 @@
 #include <QThreadPool>
 #include <QCoreApplication>
 #include <QRandomGenerator>
+#include <QMap>
 
 #define SER_HOSTS "hosts"
 #define SER_HOSTS_BACKUP "hostsbackup"
@@ -32,6 +33,7 @@ private:
     bool tryPollComputer(QNetworkAccessManager* nam, NvAddress address, bool& changed)
     {
         NvHTTP http(address, 0, m_Computer->serverCert, nam);
+        http.setPortMapping(m_Computer->portMapping);
 
         QString serverInfo;
         try {
@@ -443,78 +445,88 @@ void ComputerManager::handleQueryFreeWindowsResponse(const QString& response)
         return;
     }
 
-    NvAddress address(deviceIp, 21001);
-
-    NvComputer* newComputer = new NvComputer();
-    newComputer->name = "Cloud Host: " + deviceIp;  // 使用IP作为名称
-    newComputer->uuid = deviceId;  // 生成UUID
-    newComputer->state = NvComputer::CS_ONLINE;  // 直接标记为在线
-    newComputer->pairState = NvComputer::PS_PAIRED;  // 直接标记为已配对
-    newComputer->manualAddress = address;
-    newComputer->activeAddress = address;
-    newComputer->activeHttpsPort = address.port();  // 使用forwardPort作为HTTPS端口
-    newComputer->isSupportedServerVersion = true;  // 假设支持
-    newComputer->appVersion = "5.0.0";  // 假设一个版本号
-    newComputer->serverCert = QSslCertificate();  // 使用空证书
-    newComputer->macAddress = "";  // 空MAC地址
-    newComputer->gfeVersion = "";  // 空GFE版本
-    newComputer->currentGameId = 0;  // 无当前游戏
-
-    NvApp app;
-    app.name = "街头霸王";
-    app.id = 0;
-    app.directLaunch = true;
-    newComputer->appList.append(app);
-
-    if (m_KnownHosts.contains(deviceId)){
-        qInfo() << "Computer with UUID" << newComputer->uuid << "already exists, updating instead";
-        NvComputer* existingComputer = m_KnownHosts.value(newComputer->uuid);
-
-        // 更新现有计算机的信息
-        {
-            QWriteLocker computerLock(&existingComputer->lock);
-            existingComputer->name = newComputer->name;
-            existingComputer->manualAddress = newComputer->manualAddress;
-            existingComputer->activeAddress = newComputer->activeAddress;
-            existingComputer->activeHttpsPort = newComputer->activeHttpsPort;
-            existingComputer->state = newComputer->state;
-            existingComputer->pairState = newComputer->pairState;
-            existingComputer->isSupportedServerVersion = newComputer->isSupportedServerVersion;
-            existingComputer->appVersion = newComputer->appVersion;
-            existingComputer->serverCert = newComputer->serverCert;
-            existingComputer->macAddress = newComputer->macAddress;
-            existingComputer->gfeVersion = newComputer->gfeVersion;
-            existingComputer->currentGameId = newComputer->currentGameId;
-            existingComputer->appList = newComputer->appList;
-            // pendingQuit is a private member, so we don't set it directly
-        }
-
-        // 通知状态变化
-        emit computerStateChanged(existingComputer);
-
-        // 清理临时对象
-        delete newComputer;
-
-        // 不轮询此计算机
-        // startPollingComputer(existingComputer);
-    } else {
-        // 添加新的计算机到列表
-        m_KnownHosts[newComputer->uuid] = newComputer;
-
-        // 保存主机信息
-        saveHost(newComputer);
-
-        // 不轮询此计算机
-        // startPollingComputer(newComputer);
-
-        // 发出计算机添加信号
-        emit computerStateChanged(newComputer);
+    QMap<int, int> portMapping;
+    for (int i = 0; i < portGroupList.size(); i++) {
+        QJsonObject portGroup = portGroupList[i].toObject();
+        int forwardPort = portGroup["forwardPort"].toInt();
+        int internalPort = portGroup["internalPort"].toInt();
+        portMapping[internalPort] = forwardPort;
     }
 
-    // 添加新主机，跳过网络查询，因为这些主机已经预配置好了
-    // addNewHost(address, false, NvAddress(), true); // true表示跳过网络查询
-    emit computerAddCompleted(true, false);
-    return;
+    qInfo() << "Using device IP:" << deviceIp << "and port:" << DEFAULT_HTTPS_PORT;
+
+    NvAddress address(deviceIp, DEFAULT_HTTPS_PORT);
+    addNewHost(address, false, NvAddress(), false, portMapping);
+//    NvApp app;
+//    app.name = "街头霸王";
+//    app.id = 0;
+//    app.directLaunch = true;
+//
+//    NvComputer* newComputer = new NvComputer();
+//    newComputer->name = "Cloud Host: " + deviceIp;  // 使用IP作为名称
+//    newComputer->uuid = deviceId;  // 生成UUID
+//    newComputer->state = NvComputer::CS_ONLINE;  // 直接标记为在线
+//    newComputer->pairState = NvComputer::PS_PAIRED;  // 直接标记为已配对
+//    newComputer->manualAddress = address;
+//    newComputer->activeAddress = address;
+//    newComputer->activeHttpsPort = address.port();  // 使用forwardPort作为HTTPS端口
+//    newComputer->isSupportedServerVersion = true;  // 假设支持
+//    newComputer->appVersion = "5.0.0";  // 假设一个版本号
+//    newComputer->serverCert = QSslCertificate();  // 使用空证书
+//    newComputer->macAddress = "";  // 空MAC地址
+//    newComputer->gfeVersion = "";  // 空GFE版本
+//    newComputer->currentGameId = 0;  // 无当前游戏
+//    newComputer->appList.append(app);
+//
+//    if (m_KnownHosts.contains(deviceId)) {
+//        qInfo() << "Computer with UUID" << newComputer->uuid << "already exists, updating instead";
+//        NvComputer* existingComputer = m_KnownHosts.value(newComputer->uuid);
+//
+//        // 更新现有计算机的信息
+//        {
+//            QWriteLocker computerLock(&existingComputer->lock);
+//            existingComputer->name = newComputer->name;
+//            existingComputer->state = newComputer->state;
+//            existingComputer->pairState = newComputer->pairState;
+//            existingComputer->manualAddress = newComputer->manualAddress;
+//            existingComputer->activeAddress = newComputer->activeAddress;
+//            existingComputer->activeHttpsPort = newComputer->activeHttpsPort;
+//            existingComputer->isSupportedServerVersion = newComputer->isSupportedServerVersion;
+//            existingComputer->appVersion = newComputer->appVersion;
+//            existingComputer->serverCert = newComputer->serverCert;
+//            existingComputer->macAddress = newComputer->macAddress;
+//            existingComputer->gfeVersion = newComputer->gfeVersion;
+//            existingComputer->currentGameId = newComputer->currentGameId;
+//            existingComputer->appList = newComputer->appList;
+//            // pendingQuit is a private member, so we don't set it directly
+//        }
+//
+//        // 通知状态变化
+//        emit computerStateChanged(existingComputer);
+//
+//        // 清理临时对象
+//        delete newComputer;
+//
+//        // 不轮询此计算机
+//        // startPollingComputer(existingComputer);
+//    } else {
+//        // 添加新的计算机到列表
+//        m_KnownHosts[newComputer->uuid] = newComputer;
+//
+//        // 保存主机信息
+//        saveHost(newComputer);
+//
+//        // 不轮询此计算机
+//        // startPollingComputer(newComputer);
+//
+//        // 发出计算机添加信号
+//        emit computerStateChanged(newComputer);
+//    }
+//
+//    // 添加新主机，跳过网络查询，因为这些主机已经预配置好了
+//    // addNewHost(address, false, NvAddress(), true); // true表示跳过网络查询
+//    emit computerAddCompleted(true, false);
+//    return;
 }
 
 // Must hold m_Lock for write
@@ -868,13 +880,14 @@ class PendingAddTask : public QObject, public QRunnable
     Q_OBJECT
 
 public:
-    PendingAddTask(ComputerManager* computerManager, NvAddress address, NvAddress mdnsIpv6Address, bool mdns, bool skipNetworkQuery = false)
+    PendingAddTask(ComputerManager* computerManager, NvAddress address, NvAddress mdnsIpv6Address, bool mdns, bool skipNetworkQuery = false, QMap<int, int> portMapping = QMap<int, int>())
         : m_ComputerManager(computerManager),
           m_Address(address),
           m_MdnsIpv6Address(mdnsIpv6Address),
           m_Mdns(mdns),
           m_SkipNetworkQuery(skipNetworkQuery),  // 新增参数
-          m_AboutToQuit(false)
+          m_AboutToQuit(false),
+          m_PortMapping(portMapping)
     {
         connect(this, &PendingAddTask::computerAddCompleted,
                 computerManager, &ComputerManager::computerAddCompleted);
@@ -959,10 +972,13 @@ private:
             
             try {
                 NvHTTP http(m_Address, 0, QSslCertificate());
+                http.setPortMapping(m_PortMapping);
+
                 serverInfo = http.getServerInfo(NvHTTP::NVLL_VERBOSE);
                 
                 // 如果成功获取服务器信息，使用正常的构造函数
                 newComputer = new NvComputer(http, serverInfo);
+                newComputer->updatePortMapping(m_PortMapping);
             } catch (...) {
                 // 如果无法获取服务器信息，创建一个基本的计算机对象
                 newComputer = new NvComputer();
@@ -981,6 +997,7 @@ private:
                 newComputer->macAddress = "";  // 空MAC地址
                 newComputer->gfeVersion = "";  // 空GFE版本
                 newComputer->currentGameId = 0;  // 无当前游戏
+                newComputer->updatePortMapping(m_PortMapping);
                 // pendingQuit is a private member, so we don't set it directly
             }
             
@@ -1008,6 +1025,7 @@ private:
                         existingComputer->macAddress = newComputer->macAddress;
                         existingComputer->gfeVersion = newComputer->gfeVersion;
                         existingComputer->currentGameId = newComputer->currentGameId;
+                        existingComputer->portMapping = newComputer->portMapping;
                         // pendingQuit is a private member, so we don't set it directly
                     }
                     
@@ -1039,8 +1057,9 @@ private:
             emit computerAddCompleted(true, false);
             return;
         }
-        
+
         NvHTTP http(m_Address, 0, QSslCertificate());
+        http.setPortMapping(m_PortMapping);
 
         qInfo() << "Processing new PC at" << m_Address.toString() << "from" << (m_Mdns ? "mDNS" : "user") << "with IPv6 address" << m_MdnsIpv6Address.toString();
 
@@ -1057,6 +1076,7 @@ private:
 
         // Create initial newComputer using HTTP serverinfo with no pinned cert
         NvComputer* newComputer = new NvComputer(http, serverInfo);
+        newComputer->updatePortMapping(m_PortMapping);
 
         // Check if we have a record of this host UUID to pull the pinned cert
         NvComputer* existingComputer;
@@ -1066,6 +1086,7 @@ private:
             if (existingComputer != nullptr) {
                 http.setServerCert(existingComputer->serverCert);
             }
+            existingComputer->portMapping = m_PortMapping;
         }
 
         // Fetch serverinfo again over HTTPS with the pinned cert
@@ -1079,6 +1100,7 @@ private:
             // Update the polled computer with the HTTPS information
             NvComputer httpsComputer(http, serverInfo);
             newComputer->update(httpsComputer);
+            newComputer->updatePortMapping(m_PortMapping);
         }
 
         // Update addresses depending on the context
@@ -1195,13 +1217,14 @@ private:
     bool m_Mdns;
     bool m_SkipNetworkQuery;  // 新增参数
     bool m_AboutToQuit;
+    QMap<int, int> m_PortMapping;
 };
 
-void ComputerManager::addNewHost(NvAddress address, bool mdns, NvAddress mdnsIpv6Address, bool skipNetworkQuery)
+void ComputerManager::addNewHost(NvAddress address, bool mdns, NvAddress mdnsIpv6Address, bool skipNetworkQuery, QMap<int, int> portMapping)
 {
     // Punt to a worker thread to avoid stalling the
     // UI while waiting for serverinfo query to complete
-    PendingAddTask* addTask = new PendingAddTask(this, address, mdnsIpv6Address, mdns, skipNetworkQuery);
+    PendingAddTask* addTask = new PendingAddTask(this, address, mdnsIpv6Address, mdns, skipNetworkQuery, portMapping);
     QThreadPool::globalInstance()->start(addTask);
 }
 

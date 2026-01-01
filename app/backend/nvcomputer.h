@@ -7,6 +7,8 @@
 #include <QReadWriteLock>
 #include <QSettings>
 #include <QRunnable>
+#include <QMap>
+#include <QJsonArray>
 
 class CopySafeReadWriteLock : public QReadWriteLock
 {
@@ -43,6 +45,10 @@ public:
     explicit NvComputer(NvHTTP& http, QString serverInfo);
 
     explicit NvComputer(QSettings& settings);
+
+    bool updatePortMapping(QMap<int, int> newPortMapping);
+    void updatePortMapping(QJsonArray portGroupList);
+    int applyPortMapping(int port);
 
     void
     setRemoteAddress(QHostAddress);
@@ -113,6 +119,7 @@ public:
     QSslCertificate serverCert;
     QVector<NvApp> appList;
     bool isNvidiaServerSoftware;
+    QMap<int, int> portMapping;
     // Remember to update isEqualSerialized() when adding fields here!
 
     // Synchronization

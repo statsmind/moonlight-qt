@@ -1596,69 +1596,80 @@ bool Session::startConnectionAsync()
     QString rtspSessionUrl;
 
     try {
-        // 不使用 sunshine 原生的 launch 接口，很多参数都不知道怎么设置
-        PemHttpClient pemHttpClient;
-        pemHttpClient.setBaseUrl("https://" + m_Computer->activeAddress.address() + ":21001");
+//        // 不使用 sunshine 原生的 launch 接口，很多参数都不知道怎么设置
+//        PemHttpClient pemHttpClient;
+//        pemHttpClient.setBaseUrl("https://" + m_Computer->activeAddress.address() + ":21001");
+//
+//        QEventLoop loop;
+//        QString response;
+//        bool requestCompleted = false;
+//
+//        // 连接请求完成信号
+//        QObject::connect(&pemHttpClient, &PemHttpClient::requestFinished,
+//                         [&loop, &response, &requestCompleted](const QString& resp) {
+//                             response = resp;
+//                             qInfo() << "Launch response:" << response;
+//                             requestCompleted = true;
+//                             loop.quit();
+//                         });
+//
+//        QObject::connect(&pemHttpClient, &PemHttpClient::requestError,
+//                         [&loop, &response, &requestCompleted](const QString& error) {
+//                             response = error;
+//                             qWarning() << "Launch request failed:" << error;
+//                             requestCompleted = true;
+//                             loop.quit();
+//                         });
+//
+//        pemHttpClient.launch(nullptr, "");
+//
+//        // 等待请求完成
+//        QTimer timer;
+//        timer.setSingleShot(true);
+//        timer.setInterval(30000); // 30秒超时
+//        QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+//        timer.start();
+//        loop.exec();
+//
+//        if (!requestCompleted) {
+//            emit displayLaunchError(tr("Launch request timed out"));
+//            return false;
+//        }
+//
+//        qInfo() << "Launch response:" << response;
+//        // response 是 xml 结构，这里要解析，但是简单做法是用 regexp, 查找 rtsp[&<]* 之间的内容
+//        QRegularExpression re("rtsp[&<]*");
+//        QRegularExpressionMatch match = re.match(response);
+//        if (!match.hasMatch()) {
+//            // 如果出错，为了调试方便，加一个缺省的
+//            qWarning() << "Launch response does not contain RTSP URL";
+//            rtspSessionUrl = "rtspenc://" + m_Computer->activeAddress.address() + ":" + QString::number(21508);
+//        } else {
+//            rtspSessionUrl = match.captured(0);
+//        }
+//
+//        qInfo() << "RTSP session URL:" << rtspSessionUrl;
 
-        QEventLoop loop;
-        QString response;
-        bool requestCompleted = false;
+        NvHTTP http(m_Computer);
+        http.setPortMapping(m_Computer->portMapping);
 
-        // 连接请求完成信号
-        QObject::connect(&pemHttpClient, &PemHttpClient::requestFinished,
-                         [&loop, &response, &requestCompleted](const QString& resp) {
-                             response = resp;
-                             qInfo() << "Launch response:" << response;
-                             requestCompleted = true;
-                             loop.quit();
-                         });
+        http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
+                      m_Computer->isNvidiaServerSoftware,
+                      m_App.id, &m_StreamConfig,
+                      enableGameOptimizations,
+                      m_Preferences->playAudioOnHost,
+                      m_InputHandler->getAttachedGamepadMask(),
+                      !m_Preferences->multiController,
+                      "1986321527179603970",
+                      rtspSessionUrl);
 
-        QObject::connect(&pemHttpClient, &PemHttpClient::requestError,
-                         [&loop, &response, &requestCompleted](const QString& error) {
-                             response = error;
-                             qWarning() << "Launch request failed:" << error;
-                             requestCompleted = true;
-                             loop.quit();
-                         });
-
-        pemHttpClient.launch(nullptr, "");
-
-        // 等待请求完成
-        QTimer timer;
-        timer.setSingleShot(true);
-        timer.setInterval(30000); // 30秒超时
-        QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
-        timer.start();
-        loop.exec();
-
-        if (!requestCompleted) {
-            emit displayLaunchError(tr("Launch request timed out"));
-            return false;
-        }
-
-        qInfo() << "Launch response:" << response;
-        // response 是 xml 结构，这里要解析，但是简单做法是用 regexp, 查找 rtsp[&<]* 之间的内容
-        QRegularExpression re("rtsp[&<]*");
-        QRegularExpressionMatch match = re.match(response);
-        if (!match.hasMatch()) {
-            // 如果出错，为了调试方便，加一个缺省的
-            qWarning() << "Launch response does not contain RTSP URL";
-            rtspSessionUrl = "rtspenc://" + m_Computer->activeAddress.address() + ":" + QString::number(21508);
-        } else {
-            rtspSessionUrl = match.captured(0);
-        }
-
+        QUrl rtspUrl = QUrl(rtspSessionUrl);
+        rtspUrl.setHost(m_Computer->activeAddress.address());
+        rtspUrl.setPort(m_Computer->applyPortMapping(rtspUrl.port()));
         qInfo() << "RTSP session URL:" << rtspSessionUrl;
+        rtspSessionUrl = rtspUrl.toString();
+        qInfo() << "RTSP translated session URL:" << rtspSessionUrl;
 
-//        NvHTTP http(m_Computer);
-//        http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
-//                      m_Computer->isNvidiaServerSoftware,
-//                      m_App.id, &m_StreamConfig,
-//                      enableGameOptimizations,
-//                      m_Preferences->playAudioOnHost,
-//                      m_InputHandler->getAttachedGamepadMask(),
-//                      !m_Preferences->multiController,
-//                      rtspSessionUrl);
     } catch (const GfeHttpResponseException& e) {
         emit displayLaunchError(tr("Host returned error: %1").arg(e.toQString()));
         return false;
@@ -1743,9 +1754,14 @@ bool Session::startConnectionAsync()
                                                                          false);
     }
 
+    int videoProxyPort = m_Computer->applyPortMapping(47998);
+    int audioProxyPort = m_Computer->applyPortMapping(48000);
+    int controlProxyPort = m_Computer->applyPortMapping(47999);
+
+    // TODO: add video and audio proxy port
     int err = LiStartConnection(&hostInfo, &m_StreamConfig, &k_ConnCallbacks,
                                 &m_VideoCallbacks, &m_AudioCallbacks,
-                                NULL, 0, NULL, 0);
+                                NULL, 0, NULL, 0, videoProxyPort, audioProxyPort, controlProxyPort);
     if (err != 0) {
         // We already displayed an error dialog in the stage failure
         // listener.

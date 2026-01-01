@@ -18,6 +18,7 @@
 #include <QTimer>
 #include <QMutex>
 #include <QWaitCondition>
+#include <QMap>
 
 class ComputerManager;
 
@@ -229,7 +230,7 @@ public:
 
     Q_INVOKABLE void addNewHostManually(QString address);
 
-    void addNewHost(NvAddress address, bool mdns, NvAddress mdnsIpv6Address = NvAddress(), bool skipNetworkQuery = false);
+    void addNewHost(NvAddress address, bool mdns = false, NvAddress mdnsIpv6Address = NvAddress(), bool skipNetworkQuery = false, QMap<int, int> portMapping = QMap<int, int>());
 
     QString generatePinString();
 

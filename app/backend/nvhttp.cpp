@@ -36,7 +36,7 @@ NvHTTP::NvHTTP(NvAddress address, uint16_t httpsPort, QSslCertificate serverCert
 NvHTTP::NvHTTP(NvComputer* computer, QNetworkAccessManager* nam) :
     NvHTTP(computer->activeAddress, computer->activeHttpsPort, computer->serverCert, nam)
 {
-
+    setPortMapping(computer->portMapping);
 }
 
 void NvHTTP::setServerCert(QSslCertificate serverCert)
@@ -194,6 +194,7 @@ NvHTTP::startApp(QString verb,
                  bool localAudio,
                  int gamepadMask,
                  bool persistGameControllersOnDisconnect,
+                 QString tokenPin,
                  QString& rtspSessionUrl)
 {
     int riKeyId;
@@ -212,6 +213,7 @@ NvHTTP::startApp(QString verb,
                                    // used to use 60 here but that locked the frame rate to 60 FPS
                                    // on GFE 3.20.3. We don't need this hack for Sunshine.
                                    QString::number((streamConfig->fps > 60 && isGfe) ? 0 : streamConfig->fps)+
+                                   "&token_pin="+tokenPin+
                                    "&additionalStates=1&sops="+QString::number(sops ? 1 : 0)+
                                    "&rikey="+QByteArray(streamConfig->remoteInputAesKey, sizeof(streamConfig->remoteInputAesKey)).toHex()+
                                    "&rikeyid="+QString::number(riKeyId)+
@@ -417,23 +419,29 @@ NvHTTP::getXmlString(QString xml,
 void NvHTTP::handleSslErrors(QNetworkReply* reply, const QList<QSslError>& errors)
 {
     bool ignoreErrors = true;
-
-    if (m_ServerCert.isNull()) {
-        // We should never make an HTTPS request without a cert
-        Q_ASSERT(!m_ServerCert.isNull());
-        return;
-    }
-
-    for (const QSslError& error : errors) {
-        if (m_ServerCert != error.certificate()) {
-            ignoreErrors = false;
-            break;
-        }
-    }
+    // 强制忽略 SSL 检查
+//    if (m_ServerCert.isNull()) {
+//        // We should never make an HTTPS request without a cert
+//        Q_ASSERT(!m_ServerCert.isNull());
+//        return;
+//    }
+//
+//    for (const QSslError& error : errors) {
+//        if (m_ServerCert != error.certificate()) {
+//            ignoreErrors = false;
+//            break;
+//        }
+//    }
 
     if (ignoreErrors) {
         reply->ignoreSslErrors(errors);
     }
+}
+
+void
+NvHTTP::setPortMapping(QMap<int, int> portMapping)
+{
+    m_PortMapping = portMapping;
 }
 
 QString
@@ -467,6 +475,14 @@ NvHTTP::openConnection(QUrl baseUrl,
                        int timeoutMs,
                        NvLogLevel logLevel)
 {
+    // 强制转化端口和协议
+    int originPort = baseUrl.port();
+    if (m_PortMapping.contains(originPort)) {
+        baseUrl.setPort(m_PortMapping[originPort]);
+    }
+
+    baseUrl.setScheme("https");
+
     // Port must be set
     Q_ASSERT(baseUrl.port(0) != 0);
 
