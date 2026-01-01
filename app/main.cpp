@@ -55,6 +55,7 @@
 #include "settings/streamingpreferences.h"
 #include "gui/sdlgamepadkeynavigation.h"
 #include "backend/pemhttpclient.h"
+#include "path.h"
 
 #if defined(Q_OS_WIN32)
 #define IS_UNSPECIFIED_HANDLE(x) ((x) == INVALID_HANDLE_VALUE || (x) == NULL)
@@ -396,6 +397,9 @@ int main(int argc, char *argv[])
 {
     // Initialize our logging before anything else
     initializeStandardStreams();
+
+    // Initialize paths
+    Path::initialize(false);
 
     // Ensure we restore SDL's default logging function on exit
     Finally finally([]() { restoreSdlLogFunction(); });
