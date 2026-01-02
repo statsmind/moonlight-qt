@@ -1085,8 +1085,8 @@ private:
             existingComputer = m_ComputerManager->m_KnownHosts.value(newComputer->uuid);
             if (existingComputer != nullptr) {
                 http.setServerCert(existingComputer->serverCert);
+                existingComputer->updatePortMapping(m_PortMapping);
             }
-            existingComputer->portMapping = m_PortMapping;
         }
 
         // Fetch serverinfo again over HTTPS with the pinned cert
