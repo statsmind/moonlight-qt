@@ -230,7 +230,7 @@ public:
 
     Q_INVOKABLE void addNewHostManually(QString address);
 
-    void addNewHost(NvAddress address, bool mdns = false, NvAddress mdnsIpv6Address = NvAddress(), bool skipNetworkQuery = false, QMap<int, int> portMapping = QMap<int, int>());
+    void addNewHost(NvAddress address, bool mdns = false, NvAddress mdnsIpv6Address = NvAddress(), QMap<int, int> portMapping = QMap<int, int>());
 
     QString generatePinString();
 
@@ -292,4 +292,12 @@ private:
     
     // 添加PemHttpClient实例
     PemHttpClient* m_PemHttpClient;
+    
+    // 用于跟踪queryFreeWindows的重试状态
+    bool m_QueryFreeWindowsRetried;
+    QString m_LastQueryGameId;
+    QString m_LastQueryUserId;
+    QString m_LastQueryGpuId;
+    QObject* m_LastQueryCallbackObject;
+    QString m_LastQueryCallbackMethod;
 };

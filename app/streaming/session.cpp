@@ -1653,15 +1653,25 @@ bool Session::startConnectionAsync()
         NvHTTP http(m_Computer);
         http.setPortMapping(m_Computer->portMapping);
 
-        http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
-                      m_Computer->isNvidiaServerSoftware,
-                      m_App.id, &m_StreamConfig,
-                      enableGameOptimizations,
-                      m_Preferences->playAudioOnHost,
-                      m_InputHandler->getAttachedGamepadMask(),
-                      !m_Preferences->multiController,
-                      "1986321527179603970",
-                      rtspSessionUrl);
+        // 加入重试机制
+        for (int i = 0; i < 2; ++i) {
+            try {
+                http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
+                              m_Computer->isNvidiaServerSoftware,
+                              m_App.id, &m_StreamConfig,
+                              enableGameOptimizations,
+                              m_Preferences->playAudioOnHost,
+                              m_InputHandler->getAttachedGamepadMask(),
+                              !m_Preferences->multiController,
+                              "1986321527179603970",
+                              rtspSessionUrl);
+                break;
+            } catch (const GfeHttpResponseException& e) {
+                if (i == 1) {
+                    throw e;
+                }
+            }
+        }
 
         QUrl rtspUrl = QUrl(rtspSessionUrl);
         rtspUrl.setHost(m_Computer->activeAddress.address());
