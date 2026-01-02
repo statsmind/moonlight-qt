@@ -345,7 +345,7 @@ void PemHttpClient::registerDevice(const QString &deviceCode, const QString &mod
     qCInfo(pemHttpClient) << "调用registerDevice，设备码:" << deviceCode << "模型:" << model << "类型:" << type;
     
     QJsonObject requestData;
-    requestData["deviceCode"] = "jameshu_test"; // 使用固定的测试设备码
+    requestData["deviceCode"] = deviceCode; // "jameshu_test"; // 使用固定的测试设备码
     requestData["model"] = model;
     requestData["type"] = type;
     

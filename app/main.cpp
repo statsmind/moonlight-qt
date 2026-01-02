@@ -400,7 +400,7 @@ int main(int argc, char *argv[])
 {
     SDL_SetMainReady();
 
-    // Initialize paths
+    // Jameshu: 修复Path里一个assert错误
     Path::initialize(false);
 
     // Set the app version for the QCommandLineParser's showVersion() command
@@ -856,6 +856,7 @@ int main(int argc, char *argv[])
                                                    [](QQmlEngine* qmlEngine, QJSEngine*) -> QObject* {
                                                        return StreamingPreferences::get(qmlEngine);
                                                    });
+    // Jameshu: 注册 PemHttpClient 组件
     qmlRegisterSingletonType<PemHttpClient>("PemHttpClient", 1, 0,
                                             "PemHttpClient",
                                             [](QQmlEngine*, QJSEngine*) -> QObject* {

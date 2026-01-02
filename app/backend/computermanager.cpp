@@ -425,6 +425,7 @@ void ComputerManager::handleQueryFreeWindowsResponse(const QString& response)
     QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
     if (doc.isNull()) {
         qWarning() << "Invalid JSON response from queryFreeWindows";
+        emit errorMessageDetected("Invalid JSON response from queryFreeWindows");
         return;
     }
     
@@ -432,6 +433,7 @@ void ComputerManager::handleQueryFreeWindowsResponse(const QString& response)
     int code = obj["code"].toInt();
     if (code != 200) {
         qWarning() << "queryFreeWindows returned error code:" << code;
+        emit errorMessageDetected(obj["msg"].toString());
         return;
     }
     
@@ -442,6 +444,7 @@ void ComputerManager::handleQueryFreeWindowsResponse(const QString& response)
     
     if (deviceIp.isEmpty()) {
         qWarning() << "No device IP in queryFreeWindows response";
+        emit errorMessageDetected("No device IP in queryFreeWindows response");
         return;
     }
 

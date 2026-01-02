@@ -256,6 +256,8 @@ signals:
 
     void quitAppCompleted(QVariant error);
 
+    void errorMessageDetected(QString message);
+
 private slots:
     void handleAboutToQuit();
 
